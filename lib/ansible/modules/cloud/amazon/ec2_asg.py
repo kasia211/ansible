@@ -13,6 +13,8 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Ansible.  If not, see <http://www.gnu.org/licenses/>.
+from botocore.exceptions import ClientError
+
 ANSIBLE_METADATA = {'metadata_version': '1.1',
                     'status': ['stableinterface'],
                     'supported_by': 'certified'}
@@ -534,6 +536,7 @@ def enforce_required_arguments():
 
 
 def get_properties(autoscaling_group):
+    global target_groups
     properties = dict()
     properties['healthy_instances'] = 0
     properties['in_service_instances'] = 0
@@ -592,9 +595,13 @@ def get_properties(autoscaling_group):
                                       region=region,
                                       endpoint=ec2_url,
                                       **aws_connect_params)
-        tg_paginator = elbv2_connection.get_paginator('describe_target_groups')
-        tg_result = tg_paginator.paginate(TargetGroupArns=properties['target_group_arns']).build_full_result()
-        target_groups = tg_result['TargetGroups']
+        try:
+            tg_paginator = elbv2_connection.get_paginator('describe_target_groups')
+            tg_result = tg_paginator.paginate(TargetGroupArns=properties['target_group_arns']).build_full_result()
+            target_groups = tg_result['TargetGroups']
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'TargetGroupNotFound':
+                target_groups = []
     else:
         target_groups = []
     properties['target_group_names'] = [tg['TargetGroupName'] for tg in target_groups]
